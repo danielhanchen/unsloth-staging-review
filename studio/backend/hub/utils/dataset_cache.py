@@ -11,6 +11,8 @@ import tempfile
 from pathlib import Path, PurePosixPath
 from typing import Any, Optional
 
+from loggers import get_logger
+
 from hub.utils.dataset_processed_cache import (
     mark_app_processed_dataset_cache_complete,
     normalized_commit_hash,
@@ -24,6 +26,7 @@ from hub.utils.hf_cache_state import (
 )
 from utils.paths.path_utils import drop_appledouble_metadata, is_appledouble_metadata
 
+logger = get_logger(__name__)
 
 TRAINING_DATA_EXTS = (".parquet", ".json", ".jsonl", ".csv")
 
@@ -559,7 +562,19 @@ def load_cached_hf_dataset(
         )
     dataset = load_dataset(**kwargs)
     if app_cache is not None:
-        mark_app_processed_dataset_cache_complete(app_cache)
+        # Best effort on purpose. The completion flag is advisory -- nothing reads it
+        # back to gate a load -- so a cache purge racing this load, a read-only studio
+        # home, or a full disk must not discard a dataset that already loaded. Letting
+        # it propagate costs a full Hub re-download of a perfectly good cached dataset,
+        # and fails the run outright when offline or resuming with exact resources.
+        try:
+            mark_app_processed_dataset_cache_complete(app_cache)
+        except (OSError, RuntimeError, ValueError):
+            logger.warning(
+                "Could not record processed dataset cache completion for %s",
+                repo_id,
+                exc_info = True,
+            )
     return dataset
 
 
