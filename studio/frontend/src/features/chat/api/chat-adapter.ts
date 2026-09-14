@@ -8229,11 +8229,9 @@ export function createOpenAIStreamAdapter(
                   timing: partialTiming,
                   ...generationCustom(),
                 },
-                timing: partialTiming,
-                ...generationCustom(),
               },
-            },
-          };
+            };
+          }
         }
         throw err;
       } finally {
