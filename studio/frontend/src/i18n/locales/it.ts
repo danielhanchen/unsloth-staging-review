@@ -2400,6 +2400,7 @@ export const it = {
       importedCursorChatCount:
         "{count} conversazioni importate da Cursor.",
       cursorUpToDate: "Le conversazioni di Cursor sono già aggiornate.",
+      importedCursorPartial: "Alcune conversazioni di Cursor non sono state importate.",
       importFromClaude: "Importa da Claude Code",
       importFromClaudeDescription:
         "Copia le tue conversazioni di Claude Code in Studio, raggruppate per progetto.",
@@ -2408,6 +2409,7 @@ export const it = {
       importedClaudeChatCount:
         "{count} conversazioni importate da Claude Code.",
       claudeUpToDate: "Le conversazioni di Claude Code sono già aggiornate.",
+      importedClaudePartial: "Alcune conversazioni di Claude Code non sono state importate.",
       clearHistory: "Cancella la cronologia delle chat",
       clearHistoryDescription:
         "Elimina la cronologia delle chat da questo dispositivo.",
