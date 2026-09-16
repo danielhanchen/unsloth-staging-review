@@ -4,6 +4,7 @@
 import { attachedMediaUnavailableReason } from "../lib/attached-media-gate";
 import { externalModelLabel } from "../lib/external-model-label";
 import { mlxRuntimeStateFrom } from "../lib/mlx-runtime-state";
+import { spokenReplyText } from "@/components/assistant-ui/audio-reply-text";
 import { minPSamplingPayload } from "../lib/min-p-policy";
 import {
   createMinPRecoveryGuard,
@@ -5374,7 +5375,7 @@ export function createOpenAIStreamAdapter(
           // the player above that text, the way a normal message with an
           // attachment reads -- discarding the text left the reply unsearchable,
           // uncopyable, and unreadable to anyone who cannot play the audio.
-          const replyText = result.choices?.[0]?.message?.content?.trim() ?? "";
+          const replyText = spokenReplyText(result.choices?.[0]?.message?.content);
           const player = `<audio-player src="${audioUrl}" />`;
           yield {
             content: [
