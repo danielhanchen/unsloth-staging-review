@@ -2952,8 +2952,7 @@ def _parse_host_authority(host_header: Optional[str]) -> tuple[Optional[str], Op
 
 
 def _host_authority_matches_listener(
-    host_header: Optional[str],
-    server: Optional[tuple[Any, ...]],
+    host_header: Optional[str], server: Optional[tuple[Any, ...]]
 ) -> bool:
     """Require ``Host`` to name the accepting socket (incl. port on non-default listeners).
 
