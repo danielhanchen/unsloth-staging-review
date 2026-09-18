@@ -21102,7 +21102,6 @@ class LlamaCppBackend:
         )
         if tensor_offset_mismatch:
             from utils.models.gguf_metadata import prism_legacy_q2_gguf_user_message
-
             return LlamaCppBackend._with_startup_diagnostics(
                 prism_legacy_q2_gguf_user_message(
                     tensor_name = tensor_offset_mismatch.group(1),
