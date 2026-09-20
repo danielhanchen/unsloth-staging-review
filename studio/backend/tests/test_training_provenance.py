@@ -685,6 +685,50 @@ def test_exact_model_snapshot_rejects_unmarked_blobs_dir(tmp_path):
     assert exact_model_snapshot_path(str(snapshot), "org/model") is None
 
 
+def test_exact_model_snapshot_rejects_symlinked_repo_blobs_dir(tmp_path):
+    """A repo's own ``blobs`` that is a symlink anchors trust wherever it points.
+
+    The containment test compares against a resolved root, so resolving a symlinked leaf
+    would make every file under its target an exact snapshot, including externally mutable
+    bytes that are not in the cache at all.
+    """
+    snapshot = _model_snapshot(tmp_path, "org/model", "linked-blobs", weights = False)
+    repo = snapshot.parent.parent
+    outside = tmp_path / "not-the-cache"
+    outside.mkdir()
+    (repo / "blobs").symlink_to(outside)
+    payload = outside / "etag"
+    payload.write_bytes(b"weights")
+    (snapshot / "model.safetensors").symlink_to(os.path.relpath(payload, snapshot))
+
+    assert exact_model_snapshot_path(str(snapshot), "org/model") is None
+
+
+def test_exact_model_snapshot_rejects_hand_made_shared_store_marker(tmp_path, monkeypatch):
+    """With no hub helper to ask, a bare marker filename must not buy trust.
+
+    The fallback only runs on a hub old enough to lack the store entirely, so anything it
+    sees is hand made; upstream requires a regular marker holding a layout version, and so
+    does this.
+    """
+    import sys
+
+    # None in sys.modules makes the import raise, which is the state a pre-1.32 hub presents.
+    monkeypatch.setitem(sys.modules, "huggingface_hub.utils._shared_blobs", None)
+    snapshot = _model_snapshot(tmp_path, "org/model", "hand-made", weights = False)
+    store = tmp_path / "blobs"
+    store.mkdir()
+    (store / ".huggingface-shared-blobs").write_text("not a layout version")
+    payload = store / "payload"
+    payload.write_bytes(b"weights")
+    repo_blob = snapshot.parent.parent / "blobs" / "etag"
+    repo_blob.parent.mkdir(exist_ok = True)
+    repo_blob.symlink_to(os.path.relpath(payload, repo_blob.parent))
+    (snapshot / "model.safetensors").symlink_to(os.path.relpath(repo_blob, snapshot))
+
+    assert exact_model_snapshot_path(str(snapshot), "org/model") is None
+
+
 def test_exact_model_snapshot_rejects_symlinked_shared_store(tmp_path):
     """A ``blobs`` leaf that is itself a symlink is not a store hub owns.
 

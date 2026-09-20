@@ -143,11 +143,22 @@ def same_existing_path(first: Path, second: Path) -> bool:
 
 
 SHARED_BLOBS_MARKER_NAME = ".huggingface-shared-blobs"
+_SHARED_BLOBS_LAYOUT_RE = re.compile(r"\A[0-9]+\n\Z")
 
 
-def _resolved_existing_dir(path: Path) -> Optional[Path]:
+def _resolved_real_dir(path: Path) -> Optional[Path]:
+    """Resolve ``path``, but only if the leaf itself is a real directory.
+
+    ``is_dir()`` follows symlinks and ``resolve()`` then returns wherever the link points, so
+    resolving first and asking questions afterwards would make a ``blobs`` symlink into a
+    trust root anchored outside the cache. Callers compare a fully resolved candidate against
+    what this returns, so that would admit externally mutable bytes as an exact snapshot.
+    ``lstat`` is the difference: it reports the link, not its target.
+    """
     try:
-        return path.resolve(strict = True) if path.is_dir() else None
+        if not stat_module.S_ISDIR(path.lstat().st_mode):
+            return None
+        return path.resolve(strict = True)
     except (OSError, RuntimeError, ValueError):
         return None
 
@@ -157,17 +168,24 @@ def _is_hub_shared_blobs_dir(path: Path) -> bool:
 
     Read from upstream rather than reimplemented: hub validates an ownership marker AND its
     layout version, and a later hub may bump that version, so asking the installed hub keeps
-    us in step with the cache it actually writes. The literal marker check is the fallback for
-    a hub too old to export the helper -- such a hub also never creates the store, so the
-    fallback answers False and the caller behaves exactly as it did before 1.32.
+    us in step with the cache it actually writes. The fallback is for a hub too old to export
+    the helper, which also never creates the store, so it should and does answer False for
+    everything a real cache contains; it mirrors upstream's shape (real directory, regular
+    marker file, a layout version line) rather than trusting a filename, since otherwise a
+    hand-made marker would buy trust upstream itself would refuse.
     """
     try:
         from huggingface_hub.utils._shared_blobs import is_shared_blobs_dir
         return bool(is_shared_blobs_dir(path))
     except Exception:
         pass
+    marker = path / SHARED_BLOBS_MARKER_NAME
     try:
-        return path.is_dir() and (path / SHARED_BLOBS_MARKER_NAME).is_file()
+        if not stat_module.S_ISDIR(path.lstat().st_mode):
+            return False
+        if not stat_module.S_ISREG(marker.lstat().st_mode):
+            return False
+        return _SHARED_BLOBS_LAYOUT_RE.fullmatch(marker.read_text()) is not None
     except (OSError, ValueError):
         return False
 
@@ -179,17 +197,17 @@ def trusted_blob_roots(repo_dir: Path) -> tuple[Path, ...]:
     ``<cache_root>/blobs``: 1.32 turned each repo's ``blobs/<etag>`` into a symlink into that
     store, so a weight file resolves outside its repo folder without leaving the cache.
 
-    Both roots are RESOLVED, because callers compare them against a fully resolved candidate.
-    Comparing against a literal path silently rejects the very files it is meant to admit when
-    a ``blobs`` leaf is a symlink, which is how a big shared store ends up on another volume.
+    Both roots are RESOLVED, because callers compare them against a fully resolved candidate,
+    and a ``blobs`` leaf that is itself a symlink is not a root at all: hub refuses to adopt
+    one as its store, and honouring one here would anchor trust wherever the link points.
     """
     roots: list[Path] = []
-    own = _resolved_existing_dir(repo_dir / "blobs")
+    own = _resolved_real_dir(repo_dir / "blobs")
     if own is not None:
         roots.append(own)
     shared = repo_dir.parent / "blobs"
     if _is_hub_shared_blobs_dir(shared):
-        resolved_shared = _resolved_existing_dir(shared)
+        resolved_shared = _resolved_real_dir(shared)
         if resolved_shared is not None and resolved_shared not in roots:
             roots.append(resolved_shared)
     return tuple(roots)
