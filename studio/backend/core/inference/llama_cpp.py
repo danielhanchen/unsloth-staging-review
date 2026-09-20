@@ -3745,7 +3745,6 @@ def _resolve_variant_gguf_files(
 
     try:
         from huggingface_hub import list_repo_files
-
         listed_files = list(list_repo_files(hf_repo, token = hf_token))
         _assign_from_files(listed_files)
     except Exception as e:
@@ -3766,10 +3765,7 @@ def _resolve_variant_gguf_files(
     if not gguf_filename:
         try:
             from hub.services.models import gguf_variants as hub_gguf_variants
-
-            requirement = hub_gguf_variants.gguf_variant_requirements(
-                hf_repo, hf_variant, hf_token
-            )
+            requirement = hub_gguf_variants.gguf_variant_requirements(hf_repo, hf_variant, hf_token)
             if requirement is not None and requirement.main_filenames:
                 gguf_filename = sorted(requirement.main_filenames)[0]
                 gguf_extra_shards = _gguf_extra_shards(
@@ -3787,7 +3783,6 @@ def _resolve_variant_gguf_files(
     if not gguf_filename and listed_files is None:
         try:
             from huggingface_hub import list_repo_files
-
             listed_files = list(list_repo_files(hf_repo, token = hf_token))
             _assign_from_files(listed_files)
         except Exception as e:
@@ -3799,7 +3794,6 @@ def _resolve_variant_gguf_files(
     if not gguf_filename:
         try:
             from hub.utils.gguf import gguf_variant_key, list_gguf_variants_from_hf_cache
-
             cached = list_gguf_variants_from_hf_cache(hf_repo)
             if cached is not None:
                 variants, _, _ = cached
