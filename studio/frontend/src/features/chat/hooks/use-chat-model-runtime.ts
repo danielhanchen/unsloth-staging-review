@@ -1006,6 +1006,7 @@ export function useChatModelRuntime() {
                 customContextLength,
                 loadedContextLength: live.loadedContextLength,
                 launchContextLength: live.launchContextLength,
+                effectiveContextTotal: live.effectiveContextTotal,
                 currentCheckpoint: live.params.checkpoint,
                 activeGgufVariant: live.activeGgufVariant,
                 isMlx: isServedByMlx(
@@ -1407,6 +1408,8 @@ export function useChatModelRuntime() {
           // request the server refused rather than a size it ran at: replaying it
           // with --fit off would ask for memory that did not fit.
           const loadPreFitContextLength = stateBeforeUnload.preFitContextLength;
+          // What the server ALLOCATED across its slots, which is what a reload is sized in.
+          const loadEffectiveContextTotal = stateBeforeUnload.effectiveContextTotal;
           const loadTensorParallel = targetIsDiffusion
             ? false
             : (pendingLoadConfig?.tensorParallel ??
@@ -1553,6 +1556,7 @@ export function useChatModelRuntime() {
                 customContextLength: validateCustomContextLength,
                 loadedContextLength: loadContextLength,
                 launchContextLength: loadLaunchContextLength,
+                effectiveContextTotal: loadEffectiveContextTotal,
                 currentCheckpoint,
                 activeGgufVariant: loadActiveGgufVariant,
                 isMlx: isServedByMlx(isGguf, platform.deviceType, platform.chatOnlyReason),
@@ -1797,6 +1801,7 @@ export function useChatModelRuntime() {
               customContextLength: loadCustomContextLength,
               loadedContextLength: loadContextLength,
               launchContextLength: loadLaunchContextLength,
+              effectiveContextTotal: loadEffectiveContextTotal,
               currentCheckpoint,
               activeGgufVariant: loadActiveGgufVariant,
               isMlx: targetIsMlx,
