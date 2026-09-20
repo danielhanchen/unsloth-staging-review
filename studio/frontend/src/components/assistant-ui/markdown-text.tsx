@@ -5,6 +5,7 @@
 
 import {
   ArtifactCard,
+  useScopedChatProject,
   useChatProjectScope,
   useChatRuntimeStore,
 } from "@/features/chat";
@@ -82,6 +83,8 @@ import { AudioPlayer } from "./audio-player";
 import {
   decodeSegment,
   markdownSandboxImageSrc,
+  sandboxFileForSrc,
+  sandboxSessionInSrc,
 } from "./sandbox-files";
 import { SearchImageElement, SearchImagesContext } from "./search-image";
 import { useSandboxImage } from "./use-sandbox-image";
@@ -159,18 +162,38 @@ const MarkdownImage = memo(function MarkdownImage(props: ComponentProps<"img">) 
   const remoteId = useAuiState(({ threadListItem }) => threadListItem.remoteId);
   const activeThreadId = useChatRuntimeStore((state) => state.activeThreadId);
   const projectId = useChatProjectScope();
-  const file = src
-    ? markdownSandboxImageSrc(src, {
-        threadId: remoteId ?? activeThreadId ?? undefined,
-        projectId,
-      })
-    : null;
+  // Scoped rather than the plain list: a chat opened from the archived view keeps its
+  // project scope, and the shared list carries non-archived projects only, so reading
+  // "missing" as "still loading" hid those images for good.
+  const { project, isResolving } = useScopedChatProject(projectId);
+  // Changing a project's working directory rotates its workspace session, so a bare `plot.png` in
+  // a project chat resolves against the row's current value. Until that row has loaded there is
+  // nothing to resolve against, and only such a src waits, rather than guessing `project-<id>`:
+  // that is the folder from before the change, which the route answers with a 410. A src that
+  // records its own session names the folder its files were written to and needs no row at all,
+  // so a project list that is slow or has failed must not blank those out.
+  const waitingForScope =
+    src !== undefined &&
+    !!projectId &&
+    project === undefined &&
+    isResolving &&
+    sandboxFileForSrc(src) !== null &&
+    sandboxSessionInSrc(src) === null;
+  const file =
+    src && !waitingForScope
+      ? markdownSandboxImageSrc(src, {
+          threadId: remoteId ?? activeThreadId ?? undefined,
+          projectId,
+          workspaceSessionId: project?.workspaceSessionId,
+        })
+      : null;
   const sandbox = useSandboxImage(file);
   const [failedSrc, setFailedSrc] = useState<string | null>(null);
   // A sandbox src is renderable only once the authed fetch has produced a blob: until then it is
   // absent, never raw. `data:`/`blob:` keep going through exactly as they were.
-  const resolved =
-    file === null
+  const resolved = waitingForScope
+    ? undefined
+    : file === null
       ? src
       : sandbox.state.status === "loaded"
         ? sandbox.state.url
@@ -839,15 +862,22 @@ function MarkdownTextRenderer({
   const activeThreadId = useChatRuntimeStore((state) => state.activeThreadId);
   const projectId = useChatProjectScope();
   const threadId = remoteId ?? activeThreadId ?? undefined;
+  // Changing a project's folder rotates its workspace session. This rewrite runs
+  // BEFORE MarkdownImage, so without the rotated id a bare `plot.png` is rewritten
+  // to the `project-<id>` fallback, which the component then reads as a session the
+  // src chose for itself and leaves alone: every bare image 410s after the first
+  // change. It is part of the scope, so it is part of the key and the deps too.
+  const { project: scopedProject } = useScopedChatProject(projectId);
+  const workspaceSessionId = scopedProject?.workspaceSessionId ?? undefined;
   // Streamdown's memo comparator ignores rehypePlugins.
-  const sandboxScopeKey = JSON.stringify([threadId, projectId]);
+  const sandboxScopeKey = JSON.stringify([threadId, projectId, workspaceSessionId]);
   const rehypePlugins = useMemo(
     () =>
       // Streamdown caches processors by plugin name and serialized options.
       withDataImageSupport(STREAMDOWN_ALLOWED_TAGS, [
-        [rehypeSandboxImages, { threadId, projectId }],
+        [rehypeSandboxImages, { threadId, projectId, workspaceSessionId }],
       ]),
-    [threadId, projectId],
+    [threadId, projectId, workspaceSessionId],
   );
   const searchImages = useMemo(
     () => parseSearchImagesSignature(searchImagesKey),

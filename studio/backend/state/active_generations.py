@@ -93,6 +93,7 @@ class ActiveGeneration:
             _ACTIVE[self._handle] = {
                 "handle": self._handle,
                 "thread_id": self.thread_id,
+                "project_id": _project_of(self.thread_id),
                 "run_id": self.run_id,
                 "model": self.model,
                 "kind": self.kind,
@@ -115,6 +116,68 @@ class ActiveGeneration:
         return False
 
 
+def _project_of(thread_id: Optional[str]) -> Optional[str]:
+    """The project a chat belonged to when its generation started.
+
+    Frozen here on purpose. Membership is mutable: a chat can be moved to Recents or
+    to another project mid-run, and a guard that re-reads membership then stops
+    seeing the generation whose workspace it is protecting. Best effort, because a
+    generation must start whatever the database says.
+    """
+    if not thread_id:
+        return None
+    try:
+        from storage.studio_db import get_chat_thread
+        thread = get_chat_thread(thread_id)
+    except Exception:
+        return None
+    project_id = (thread or {}).get("projectId")
+    return str(project_id) if project_id else None
+
+
+def active_project_ids(account_id: Optional[str] = None) -> list[str]:
+    """Distinct projects the in-flight generations are running in.
+
+    A first turn can register before its thread row has been written, so the capture
+    at registration has nothing to read and records None. That is retried here and
+    frozen the moment it succeeds, rather than left None for the life of the run:
+    the row can appear and then be moved out of the project while the generation is
+    still going, which would take it out of both this answer and current membership.
+
+    The row is read outside the lock; holding it across a database call would put
+    every generation behind that read.
+    """
+    with _LOCK:
+        entries = [
+            e for e in _ACTIVE.values() if account_id is None or e["account_id"] == account_id
+        ]
+        pending = [
+            (e["handle"], e["thread_id"])
+            for e in entries
+            if not e.get("project_id") and e.get("thread_id")
+        ]
+    for handle, thread_id in pending:
+        project_id = _project_of(thread_id)
+        if not project_id:
+            continue
+        with _LOCK:
+            entry = _ACTIVE.get(handle)
+            # Still unset: a capture that has since succeeded elsewhere wins, and an
+            # entry whose generation ended in the meantime is not resurrected.
+            if entry is not None and not entry.get("project_id"):
+                entry["project_id"] = project_id
+    with _LOCK:
+        current = [
+            e for e in _ACTIVE.values() if account_id is None or e["account_id"] == account_id
+        ]
+        seen: list[str] = []
+        for entry in current:
+            project_id = entry.get("project_id")
+            if project_id and project_id not in seen:
+                seen.append(project_id)
+    return seen
+
+
 def snapshot(account_id: Optional[str] = None) -> list[dict[str, Any]]:
     """In-flight generations, newest last; ``account_id`` None (all) is shutdown/arbiter only."""
     with _LOCK:
@@ -126,6 +189,7 @@ def snapshot(account_id: Optional[str] = None) -> list[dict[str, Any]]:
         {
             "handle": e["handle"],
             "thread_id": e["thread_id"],
+            "project_id": e.get("project_id"),
             "run_id": e["run_id"],
             "model": e["model"],
             "kind": e["kind"],

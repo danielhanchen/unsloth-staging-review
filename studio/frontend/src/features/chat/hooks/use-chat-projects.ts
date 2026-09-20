@@ -7,6 +7,7 @@ import type { ProjectRecord } from "../types";
 import {
   createStoredChatProject,
   deleteStoredChatProject,
+  getStoredChatProject,
   isExpectedBackgroundChatStorageError,
   listStoredChatProjects,
   moveStoredChatItemToProject,
@@ -93,6 +94,15 @@ export function useChatProjects(): {
       if (!cancelled && !projectsLoaded) setIsLoading(true);
       try {
         await loadProjects(force, followUpIfPending);
+      } catch (error) {
+        // Every caller below is `void refresh(...)`, so nobody is listening: an unexpected
+        // failure here becomes an unhandled rejection rather than a handled error. That stayed
+        // invisible while only the sidebar and the projects page mounted this hook, because both
+        // run where the projects route answers. A chat image mounts it too, once per image, so a
+        // route that 404s turned one failure into one rejection per rendered image. The cached
+        // rows are left as they are and the caller reads `hasLoaded`; a project that cannot be
+        // read is the same to a reader as a project that is not there yet.
+        console.debug("Could not refresh the project list", error);
       } finally {
         if (!cancelled) {
           setHasLoaded(true);
@@ -119,8 +129,11 @@ export function useChatProjects(): {
   return { projects, isLoading, hasLoaded };
 }
 
-export async function createChatProject(name: string): Promise<ProjectRecord> {
-  return createStoredChatProject(name);
+export async function createChatProject(
+  name: string,
+  workspace?: { nativePathLease: string },
+): Promise<ProjectRecord> {
+  return createStoredChatProject(name, workspace);
 }
 
 export async function renameChatProject(
@@ -139,6 +152,20 @@ export async function updateChatProjectInstructions(
   await updateStoredChatProject(projectId, { instructions: instructions.trim() });
 }
 
+export async function setChatProjectWorkspace(
+  projectId: string,
+  workspace:
+    | { kind: "managed" }
+    | { kind: "external"; nativePathLease: string },
+): Promise<void> {
+  await updateStoredChatProject(projectId, {
+    workspaceKind: workspace.kind,
+    ...(workspace.kind === "external"
+      ? { nativePathLease: workspace.nativePathLease }
+      : {}),
+  });
+}
+
 export async function deleteChatProject(
   projectId: string,
   args: { deleteFiles?: boolean } = {},
@@ -155,4 +182,57 @@ export async function moveChatItemToProject(
   projectId: string | null,
 ): Promise<void> {
   await moveStoredChatItemToProject(item, projectId);
+}
+
+/**
+ * The project a chat is scoped to, including one the project list does not carry.
+ *
+ * `loadProjects` asks for non-archived projects only, but a chat opened from the
+ * archived view keeps its project scope, so its row is never in that list. A caller
+ * that reads "missing" as "still loading" then waits for a row that cannot arrive.
+ * Archived projects are fetched one at a time instead of widening the shared list,
+ * which is what the sidebar and the projects page render.
+ */
+export function useScopedChatProject(projectId: string | null | undefined): {
+  project: ProjectRecord | undefined;
+  isResolving: boolean;
+} {
+  const { projects, hasLoaded } = useChatProjects();
+  const listed = projectId
+    ? projects.find((candidate) => candidate.id === projectId)
+    : undefined;
+  // Keyed by the id it was read for, so a scope change is spotted by comparison
+  // rather than by clearing state from inside the effect.
+  const [fetched, setFetched] = useState<{
+    id: string;
+    project: ProjectRecord | null;
+  } | null>(null);
+  const resolvedFor = fetched?.id === projectId ? fetched : null;
+  const alreadyRead = resolvedFor !== null;
+
+  useEffect(() => {
+    if (!projectId || listed || !hasLoaded || alreadyRead) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const project = await getStoredChatProject(projectId);
+        if (!cancelled) setFetched({ id: projectId, project: project ?? null });
+      } catch (error) {
+        // Same contract as the list: a project that cannot be read is reported as
+        // absent rather than left resolving for ever.
+        console.debug("Could not read the scoped project", error);
+        if (!cancelled) setFetched({ id: projectId, project: null });
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId, listed, hasLoaded, alreadyRead]);
+
+  if (!projectId) return { project: undefined, isResolving: false };
+  if (listed) return { project: listed, isResolving: false };
+  return {
+    project: resolvedFor?.project ?? undefined,
+    isResolving: !hasLoaded || resolvedFor === null,
+  };
 }
