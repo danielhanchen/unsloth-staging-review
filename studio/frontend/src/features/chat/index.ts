@@ -301,6 +301,7 @@ export {
 export {
   deleteStoredChatThreads,
   ensureStoredChatThread,
+  getStoredChatProject,
   getStoredChatThread,
   isThreadIncognito,
   listStoredChatMessages,
@@ -388,8 +389,10 @@ export {
   deleteChatProject,
   moveChatItemToProject,
   renameChatProject,
+  setChatProjectWorkspace,
   updateChatProjectInstructions,
   useChatProjects,
+  useScopedChatProject,
 } from "./hooks/use-chat-projects";
 export { subscribeDictationLevel } from "./adapters/dictation-level";
 export {
