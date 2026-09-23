@@ -1010,6 +1010,8 @@ export function useChatModelRuntime() {
                 isGguf: residentIsGguf,
                 customContextLength,
                 loadedContextLength: live.loadedContextLength,
+                launchContextLength: live.launchContextLength,
+                effectiveContextTotal: live.effectiveContextTotal,
                 currentCheckpoint: live.params.checkpoint,
                 activeGgufVariant: live.activeGgufVariant,
                 isMlx: isServedByMlx(
@@ -1371,7 +1373,13 @@ export function useChatModelRuntime() {
                 stateBeforeUnload.loadedGpuMemoryMode ?? "auto",
                 stateBeforeUnload.loadedGpuLayers ?? GPU_LAYERS_AUTO,
                 stateBeforeUnload.loadedCustomContextLength,
-                stateBeforeUnload.loadedContextLength ?? 0,
+                // Rollback restores the old n_parallel, so one slot's share would
+                // quarter a four-slot server. Allocated aggregate first: it also
+                // survives an auto-sized launch, which names no total.
+                stateBeforeUnload.effectiveContextTotal ??
+                  stateBeforeUnload.launchContextLength ??
+                  stateBeforeUnload.loadedContextLength ??
+                  0,
               )
             : (previousPin ??
               unpinnedLoadContext(false, previousIsMlx, previousMaxSeqLength));
@@ -1402,6 +1410,13 @@ export function useChatModelRuntime() {
             pendingLoadConfig?.customContextLength ??
             stateBeforeUnload.customContextLength;
           const loadContextLength = stateBeforeUnload.loadedContextLength;
+          // Reloads are sized in TOTALS; loadContextLength is one slot's share.
+          const loadLaunchContextLength = stateBeforeUnload.launchContextLength;
+          // Set only when --fit shrank the window, making the launch total a size
+          // the server refused rather than one it ran at.
+          const loadPreFitContextLength = stateBeforeUnload.preFitContextLength;
+          // What the server allocated across its slots.
+          const loadEffectiveContextTotal = stateBeforeUnload.effectiveContextTotal;
           const loadTensorParallel = targetIsDiffusion
             ? false
             : (pendingLoadConfig?.tensorParallel ??
@@ -1547,6 +1562,8 @@ export function useChatModelRuntime() {
                 isGguf,
                 customContextLength: validateCustomContextLength,
                 loadedContextLength: loadContextLength,
+                launchContextLength: loadLaunchContextLength,
+                effectiveContextTotal: loadEffectiveContextTotal,
                 currentCheckpoint,
                 activeGgufVariant: loadActiveGgufVariant,
                 isMlx: isServedByMlx(isGguf, platform.deviceType, platform.chatOnlyReason),
@@ -1798,7 +1815,14 @@ export function useChatModelRuntime() {
               loadCustomContextLength == null &&
               (loadContextLength ?? 0) > 0
             ) {
-              loadCustomContextLength = loadContextLength;
+              // Sized in totals, so one slot's share would shrink a split server.
+              // The launch total only when --fit did not reduce it: fixed layers
+              // emit --fit off, and replaying a refused total is the OOM this
+              // branch exists to avoid.
+              loadCustomContextLength =
+                loadEffectiveContextTotal ??
+                (loadPreFitContextLength == null ? loadLaunchContextLength : null) ??
+                loadContextLength;
             }
             const effectiveMaxSeqLength = resolveLoadMaxSeqLength({
               modelId,
@@ -1806,6 +1830,8 @@ export function useChatModelRuntime() {
               isGguf,
               customContextLength: loadCustomContextLength,
               loadedContextLength: loadContextLength,
+              launchContextLength: loadLaunchContextLength,
+              effectiveContextTotal: loadEffectiveContextTotal,
               currentCheckpoint,
               activeGgufVariant: loadActiveGgufVariant,
               isMlx: targetIsMlx,

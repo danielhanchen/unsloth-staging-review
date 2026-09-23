@@ -339,6 +339,8 @@ export function resolveLoadMaxSeqLength({
   isGguf,
   customContextLength,
   loadedContextLength,
+  launchContextLength,
+  effectiveContextTotal,
   currentCheckpoint,
   activeGgufVariant,
   isMlx,
@@ -351,6 +353,11 @@ export function resolveLoadMaxSeqLength({
   isGguf?: boolean | null;
   customContextLength: number | null;
   loadedContextLength: number | null;
+  /** Total -c the resident server launched with; null when the backend reports none. */
+  launchContextLength?: number | null;
+  /** Context the server ALLOCATED across its slots. Preferred over the launch request:
+   *  it survives an auto-sized launch and is what the server ran at, not what --fit refused. */
+  effectiveContextTotal?: number | null;
   currentCheckpoint: string;
   activeGgufVariant?: string | null;
   isMlx?: boolean | null;
@@ -372,6 +379,15 @@ export function resolveLoadMaxSeqLength({
     return 0;
   }
   if (isReloadingCurrentGguf) {
+    // max_seq_length is the TOTAL -c; loadedContextLength is one slot's share, so
+    // reloading from the share shrinks a --parallel server every time. The allocated
+    // aggregate wins: it survives an auto-sized launch and is what the server ran at.
+    if (effectiveContextTotal != null && effectiveContextTotal > 0) {
+      return effectiveContextTotal;
+    }
+    if (launchContextLength != null && launchContextLength > 0) {
+      return launchContextLength;
+    }
     return loadedContextLength ?? 0;
   }
   if (isGgufLoad) {
