@@ -75,6 +75,7 @@ import {
   finalizeAppWindowLayout,
   measureWindowLayout,
   observeDevicePixelRatio,
+  prepareSetupWindow,
   shouldFinishWindowLayoutWait,
 } from "./window-layout-lifecycle";
 
@@ -269,12 +270,17 @@ async function showSetupWindow(isCurrent: WindowLayoutGuard): Promise<void> {
   if (!isCurrent()) return;
 
   const win = windowModule.getCurrentWindow();
-  await invoke("reset_app_window_layout_initialized");
-  if (!isCurrent()) return;
-  await win.setSizeConstraints(null);
-  if (!isCurrent()) return;
-  await win.setResizable(false);
-  if (!isCurrent()) return;
+  if (
+    !(await prepareSetupWindow({
+      resetLayout: () => invoke("reset_app_window_layout_initialized"),
+      unmaximize: () => win.unmaximize(),
+      clearConstraints: () => win.setSizeConstraints(null),
+      disableResize: () => win.setResizable(false),
+      isCurrent,
+    }))
+  ) {
+    return;
+  }
   const measured = await measureTauriWindowLayout(windowModule, win, isCurrent);
   if (!measured) return;
   const setupSize = fitWindowSize(
