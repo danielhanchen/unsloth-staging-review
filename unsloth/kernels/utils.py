@@ -450,7 +450,6 @@ def _maybe_fake_quantize_activations(X: torch.Tensor, proj: torch.nn.Module) -> 
 
 if DEVICE_TYPE == "xpu" and HAS_XPU_STREAM:
 
-    @torch.inference_mode
     def fast_dequantize(
         W,
         quant_state = None,
@@ -499,15 +498,18 @@ if DEVICE_TYPE == "xpu" and HAS_XPU_STREAM:
             WEIGHT_BUFFER = WEIGHT_BUFFERS[device_index]
             ABSMAX_BUFFER = ABSMAX_BUFFERS[device_index]
             if WEIGHT_BUFFER is None or WEIGHT_BUFFER.dtype != dtype:
-                WEIGHT_BUFFERS[device_index] = WEIGHT_BUFFER = torch_empty(
-                    size, dtype = dtype, device = device, requires_grad = False
-                )
-                ABSMAX_BUFFERS[device_index] = ABSMAX_BUFFER = torch_empty(
-                    n_elements_absmax,
-                    dtype = torch.float32,
-                    device = device,
-                    requires_grad = False,
-                )
+                # Allocate normal tensors even when first reached under inference mode
+                # (generate), so training can still update the pair in place.
+                with torch.inference_mode(False):
+                    WEIGHT_BUFFERS[device_index] = WEIGHT_BUFFER = torch_empty(
+                        size, dtype = dtype, device = device, requires_grad = False
+                    )
+                    ABSMAX_BUFFERS[device_index] = ABSMAX_BUFFER = torch_empty(
+                        n_elements_absmax,
+                        dtype = torch.float32,
+                        device = device,
+                        requires_grad = False,
+                    )
 
             if size > WEIGHT_BUFFER.numel():
                 WEIGHT_BUFFER.resize_(size)
@@ -562,7 +564,6 @@ if DEVICE_TYPE == "xpu" and HAS_XPU_STREAM:
 
 elif DEVICE_TYPE in ("cuda", "hip") and HAS_CUDA_STREAM:
 
-    @torch.inference_mode
     def fast_dequantize(
         W,
         quant_state = None,
@@ -612,15 +613,18 @@ elif DEVICE_TYPE in ("cuda", "hip") and HAS_CUDA_STREAM:
             WEIGHT_BUFFER = WEIGHT_BUFFERS[device_index]
             ABSMAX_BUFFER = ABSMAX_BUFFERS[device_index]
             if WEIGHT_BUFFER is None or WEIGHT_BUFFER.dtype != dtype:
-                WEIGHT_BUFFERS[device_index] = WEIGHT_BUFFER = torch_empty(
-                    size, dtype = dtype, device = device, requires_grad = False
-                )
-                ABSMAX_BUFFERS[device_index] = ABSMAX_BUFFER = torch_empty(
-                    n_elements_absmax,
-                    dtype = torch_float32,
-                    device = device,
-                    requires_grad = False,
-                )
+                # Allocate normal tensors even when first reached under inference mode
+                # (generate), so training can still update the pair in place.
+                with torch.inference_mode(False):
+                    WEIGHT_BUFFERS[device_index] = WEIGHT_BUFFER = torch_empty(
+                        size, dtype = dtype, device = device, requires_grad = False
+                    )
+                    ABSMAX_BUFFERS[device_index] = ABSMAX_BUFFER = torch_empty(
+                        n_elements_absmax,
+                        dtype = torch_float32,
+                        device = device,
+                        requires_grad = False,
+                    )
 
             if size > WEIGHT_BUFFER.numel():
                 WEIGHT_BUFFER.resize_(size)
@@ -678,7 +682,6 @@ elif DEVICE_TYPE in ("cuda", "hip") and HAS_CUDA_STREAM:
     pass
 else:
 
-    @torch.inference_mode
     def fast_dequantize(
         W,
         quant_state = None,
