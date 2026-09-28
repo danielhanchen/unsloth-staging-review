@@ -1563,6 +1563,60 @@ def test_a_shell_variable_supplying_the_cd_target(studio_home):
     )
 
 
+_CHAIN = "; ".join(["v0=../.."] + [f"v{i}=$v{i - 1}" for i in range(1, 40)])
+_AMPLIFY = "x=" + "A" * 20 + "; y=" + "$x" * 20 + "; z=" + "$y" * 20 + "; "
+
+
+@pytest.mark.parametrize(
+    "command, refused",
+    (
+        ('echo "hb=$hb fl=$fl"', False),
+        ("a=$b b=$c c=$a; echo " + "\\" * 30 + "x", False),
+        (" ".join(["a=X"] + [f"{b}=" + f"${a}" * 8 for a, b in zip("abcdefg", "bcdefgh")]), True),
+        (f"{_CHAIN}; r=$v39; r=$r/auth; cat $r/config.json", True),
+        ("a=X; " + "a=$a$a; " * 40 + "echo $a", False),
+        ("p=..; p=$p/..; p=$p/auth; sqlite3 $p/auth.db .dump", True),
+        ("x=" + "A" * 1000 + "; : " + "$x " * 10 + "; r=../..; cat $r/auth/auth.db", True),
+        ('UNSLOTH_STUDIO_HOME=$UNSLOTH_STUDIO_HOME; cat "$UNSLOTH_STUDIO_HOME/auth/auth.db"', True),
+        (_AMPLIFY + 'r=../..; q=$r; s=$q; cd "$s"; cat auth/auth.db', True),
+        ("export PATH=$PATH:/usr/local/bin; echo ok", False),
+        ("x=" + "A" * 500 + "; y=" + "$x" * 100 + "; z=" + "$y" * 100 + "; echo ok", True),
+        (
+            "(UNSLOTH_STUDIO_HOME=/tmp); UNSLOTH_STUDIO_HOME=$UNSLOTH_STUDIO_HOME; "
+            'cat "$UNSLOTH_STUDIO_HOME/auth/auth.db"',
+            True,
+        ),
+    ),
+    ids = (
+        "self-reference",
+        "cycle",
+        "copies",
+        "chain",
+        "doubling",
+        "rebound",
+        "padded",
+        "inherited",
+        "amplified",
+        "path",
+        "fan-out",
+        "subshell",
+    ),
+)
+def test_assignment_expansion_settles(studio_home, monkeypatch, command, refused):
+    expand, calls = tools._expand_shell_assignments, []
+
+    def counted(text, *args, **kwargs):
+        calls.append(text)
+        assert len(calls) < 100 and len(text) < 200_000, "the expansion does not settle"
+        expanded = expand(text, *args, **kwargs)
+        assert len(expanded) < 200_000, "the expansion was built past the size cap"
+        return expanded
+
+    monkeypatch.setattr(tools, "_expand_shell_assignments", counted)
+    workdir = str(studio_home / "sandbox" / _SESSION)
+    assert tools._references_studio_credential_here(command, workdir) is refused
+
+
 def test_a_snippets_own_run_is_not_a_child_process(studio_home):
     home = studio_home
     # `run`, `call` and `check_output` are ordinary function names. Treating a snippet's own
