@@ -5643,6 +5643,7 @@ function useImeComposerInputHandlers({
 } = {}) {
   const aui = useAui();
   const composingRef = useRef(false);
+  const imeSessionOpenRef = useRef(false);
   const [isComposing, setIsComposing] = useState(false);
   const stuckTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -5725,6 +5726,7 @@ function useImeComposerInputHandlers({
     if (justSentRef) {
       justSentRef.current = markSentTextGuardUserInput(justSentRef.current);
     }
+    imeSessionOpenRef.current = true;
     setCompositionState(true);
   }, [justSentRef, setCompositionState]);
 
@@ -5734,6 +5736,7 @@ function useImeComposerInputHandlers({
 
   const onCompositionEnd = useCallback(
     (e: CompositionEvent<HTMLTextAreaElement>) => {
+      imeSessionOpenRef.current = false;
       setCompositionState(false);
       if (!setComposerText(e.currentTarget.value, e.nativeEvent)) {
         e.preventDefault();
@@ -5778,7 +5781,13 @@ function useImeComposerInputHandlers({
         // send is marked by compositionstart instead.
         composingRef.current = true;
         refreshStuckTimer();
-        if (!imeKeydownBlocksComposerSubmit(keyEvent, wasComposing)) {
+        if (
+          !imeKeydownBlocksComposerSubmit(
+            keyEvent,
+            wasComposing,
+            imeSessionOpenRef.current,
+          )
+        ) {
           if (submitOnEnter && !skipEnterRef?.current) {
             const intent = composerSubmitIntent(
               composerKeyEventForImeSubmit(keyEvent),
