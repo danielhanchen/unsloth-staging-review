@@ -1686,7 +1686,7 @@ test("the shortcut re-reads and re-judges the status before adopting", () => {
     "the residency verdict is no longer callable against a second status",
   );
   const decision = USE_CHAT_MODEL_RUNTIME.search(
-    /const confirmedStatus = await getInferenceStatus\(\)/,
+    /const confirmedStatus = await readPickStatus\(\)/,
   );
   assert.ok(
     decision > 0,
@@ -1714,8 +1714,9 @@ test("the shortcut re-reads and re-judges the status before adopting", () => {
   );
   // A failed re-read must not adopt either: falling out of the block reaches /load.
   assert.ok(
-    USE_CHAT_MODEL_RUNTIME.indexOf("await getInferenceStatus().catch(() => null)", decision) ===
-      decision + "const confirmedStatus = ".length,
+    USE_CHAT_MODEL_RUNTIME.includes(
+      "getInferenceStatus(undefined, modelId).catch(() => null);",
+    ),
     "the re-read no longer tolerates a failed status",
   );
 });
@@ -1965,4 +1966,73 @@ test("legacy status without reasoning request echoes keeps its comparison", () =
     reasoning_budget: 32,
     reasoning_budget_message: "Conclude now.",
   }, { ...BLANK, reasoningBudget: 32, reasoningBudgetMessage: "Conclude now." }), true);
+});
+
+test("a pick asks the status about its own model, so one loaded alongside is adopted", () => {
+  assert.equal(USE_CHAT_MODEL_RUNTIME.match(/await readPickStatus\(\)/g)?.length, 2);
+  assert.match(
+    USE_CHAT_MODEL_RUNTIME,
+    /const keepsOthers = keepModelsLoaded && !forceReload;[\s\S]*?if \(currentCheckpoint && !keepsOthers\)/,
+  );
+  assert.match(USE_CHAT_MODEL_RUNTIME, /alongside: keepModelsLoaded \|\| replacesOneOfSeveral,/);
+});
+
+test("with the box off a pick replaces only the chat's own model", () => {
+  assert.match(
+    USE_CHAT_MODEL_RUNTIME,
+    /const replacesOneOfSeveral =\s*!keepModelsLoaded &&\s*!forceReload &&\s*!isExternalModelId\(useChatRuntimeStore\.getState\(\)\.params\.checkpoint\) &&\s*useChatRuntimeStore\.getState\(\)\.loadedModels\.length > 1;/,
+  );
+  assert.match(USE_CHAT_MODEL_RUNTIME, /if \(!forceCancelActive \|\| replacesOneOfSeveral\) \{/);
+  assert.equal(
+    USE_CHAT_MODEL_RUNTIME.match(/alongside: keepModelsLoaded \|\| replacesOneOfSeveral,/g)?.length,
+    2,
+  );
+});
+
+test("replacing one of several asks about and stops only that model's chats", () => {
+  const CONFIRM = readSrc("features/chat/utils/confirm-stop-running-chats.ts");
+  assert.match(
+    USE_CHAT_MODEL_RUNTIME,
+    /"reload",\s*touchesOnlySelected\s*\?\s*\(useChatRuntimeStore\.getState\(\)\.params\.checkpoint \?\? undefined\)/,
+  );
+  assert.match(
+    USE_CHAT_MODEL_RUNTIME,
+    /if \(keepsOthers \|\| touchesOnlySelected\) \{\s*requestPromptQueueStop\(stopDecision\.promptQueueThreadIds\);\s*\} else \{/,
+  );
+  assert.match(USE_CHAT_MODEL_RUNTIME, /if \(!keepsOthers && !touchesOnlySelected\) \{\s*requestLocalPromptQueueStop\(\);/);
+  assert.match(CONFIRM, /let running = model\s*\?\s*\[\]/);
+  assert.match(CONFIRM, /await getActiveGenerations\(model\)/);
+});
+
+test("applying settings to one of several scopes the stop to that model", () => {
+  assert.match(
+    USE_CHAT_MODEL_RUNTIME,
+    /const touchesOnlySelected =\s*replacesOneOfSeveral \|\|\s*\(forceReload &&\s*!isExternalModelId\(useChatRuntimeStore\.getState\(\)\.params\.checkpoint\) &&\s*useChatRuntimeStore\.getState\(\)\.loadedModels\.length > 1\);/,
+  );
+});
+
+test("eject all asks once about every model's chats before unloading any", () => {
+  assert.match(
+    USE_CHAT_MODEL_RUNTIME,
+    /const decision = await confirmStopRunningChatsIfNeeded\(\s*"Unloading every model",\s*"unload",\s*\);\s*if \(!decision\.proceed\) return false;\s*if \(selectedLocal\) \{\s*if \(!\(await ejectModel\(undefined, decision\)\)\) return false;/,
+  );
+  assert.match(USE_CHAT_MODEL_RUNTIME, /force_cancel_active: decision\.forceCancelActive \}\),/);
+});
+
+test("ejecting a kept model confirms its own chats and stops their queues", () => {
+  assert.match(
+    USE_CHAT_MODEL_RUNTIME,
+    /function unloadKeptModel\(keptId: string\)[\s\S]{0,200}?confirmStopRunningChatsIfNeeded\("Unloading this model", "unload", keptId\)[\s\S]{0,120}?if \(!decision\.proceed\) return false;\s*requestPromptQueueStop\(decision\.promptQueueThreadIds\);/,
+  );
+});
+
+test("ejecting the selected one of several stops only that model's chats", () => {
+  assert.match(
+    USE_CHAT_MODEL_RUNTIME,
+    /const scope =\s*!confirmed && useChatRuntimeStore\.getState\(\)\.loadedModels\.length > 1\s*\?\s*params\.checkpoint\s*:\s*undefined;\s*const stopDecision =\s*confirmed \?\?\s*\(await confirmStopRunningChatsIfNeeded\(\s*"Unloading the model",\s*"unload",\s*scope,\s*\)\);/,
+  );
+  assert.match(
+    USE_CHAT_MODEL_RUNTIME,
+    /if \(scope\) \{\s*requestPromptQueueStop\(stopDecision\.promptQueueThreadIds\);\s*\} else \{/,
+  );
 });
