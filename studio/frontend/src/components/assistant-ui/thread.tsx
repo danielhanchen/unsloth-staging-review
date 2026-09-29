@@ -93,6 +93,12 @@ import {
 } from "@/features/chat";
 import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button";
 import {
+  BookmarkTurnButton,
+  BookmarkTurnMenuItem,
+  TurnNavigator,
+  UserTurnLabel,
+} from "@/components/assistant-ui/turn-navigation";
+import {
   IntentAwareScrollProvider,
   useIntentAwareAutoScroll,
   useIsThreadAtBottom,
@@ -2168,6 +2174,8 @@ export const Thread: FC<{
                 <ThreadWelcome hideComposer={hideComposer} threadId={threadId} />
               </AuiIf>
             )}
+
+            <TurnNavigator viewportRef={viewportElRef} />
 
             {/* Drop-in for ThreadPrimitive.Messages that bounds a long thread's first commit to
             the tail and mounts the rest over the following frames. Nothing unmounts and the
@@ -8522,6 +8530,7 @@ const AssistantActionBar: FC = () => {
                 Save to project sources
               </ActionBarMorePrimitive.Item>
             )}
+            <BookmarkTurnMenuItem className="aui-action-bar-more-item flex cursor-pointer select-none items-center gap-2 rounded-[12px] px-3 py-2 text-sm outline-none hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground" />
           </ActionBarMorePrimitive.Content>
         </ActionBarMorePrimitive.Root>
         <MessageTiming side="top" className="h-8 px-2" />
@@ -8560,6 +8569,7 @@ const UserMessage: FC = () => {
       tabIndex={0}
       {...focusReveal}
     >
+      <UserTurnLabel />
       <UserMessageAttachments />
       <UserMessageAudio />
 
@@ -8608,6 +8618,7 @@ const UserActionBar: FC = () => {
       )}
       <ForkCountBadge />
       <ForkMessageButton />
+      <BookmarkTurnButton />
       <DeleteMessageButton />
     </UserMessageActionBar>
   );
