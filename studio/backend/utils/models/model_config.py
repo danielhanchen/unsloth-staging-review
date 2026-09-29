@@ -2700,7 +2700,7 @@ def _extract_quant_label(filename: str) -> str:
         r"|IQ[0-9]+_[A-Z]+(?:_[A-Z0-9]+)?"  # IQ variants: IQ4_XS, IQ4_NL, IQ1_S
         r"|TQ[0-9]+_[0-9]+"  # Ternary quant: TQ1_0, TQ2_0
         r"|Q[0-9]+_K_[A-Z]+"  # K-quant: Q4_K_M, Q3_K_S
-        r"|Q[0-9]+_[0-9]+"  # Standard: Q8_0, Q5_1
+        r"|P?Q[0-9]+_[0-9]+(?:_G[0-9]+)?"  # Standard/packed/grouped: Q8_0, PQ2_0, Q2_0_g64
         r"|Q[0-9]+_K"  # Short K-quant: Q6_K
         r"|BF16|F16|F32)"  # Full precision
         # Optional bits-per-weight modifier so repos shipping several files at one base quant
@@ -2732,7 +2732,7 @@ _GGUF_KNOWN_QUANT_RE = re.compile(
     r"|IQ[0-9]+_[A-Z]+(?:_[A-Z0-9]+)?"
     r"|TQ[0-9]+_[0-9]+"
     r"|Q[0-9]+_K_[A-Z]+"
-    r"|Q[0-9]+_[0-9]+"
+    r"|P?Q[0-9]+_[0-9]+(?:_G[0-9]+)?"
     r"|Q[0-9]+_K"
     r"|BF16|F16|F32)",
     re.IGNORECASE,
@@ -3249,6 +3249,58 @@ def _find_local_gguf_by_variant(
 
     Returns the absolute path, or ``None`` if no match.
     """
+    found = _find_local_gguf_by_exact_variant(directory, variant, model_root)
+    wanted = (variant or "").strip()
+    # Packed (PQ2_0) and grouped (Q2_0_g64) quants used to be labelled by their inner Q2_0
+    # token, so a selection saved before that still names Q2_0. Honour it only while no file
+    # answers to Q2_0 itself and exactly one packed or grouped label claims it.
+    if found is None and _LEGACY_Q2_SPELLING_RE.fullmatch(wanted):
+        root = _resolve_gguf_dir(Path(directory))
+        try:
+            files = (
+                [f.relative_to(root).as_posix() for f in _iter_gguf_files(root, recursive = True)]
+                if root is not None
+                else [Path(directory).name]
+            )
+        except (OSError, ValueError):
+            files = []
+        # Relative paths: a quant directory (Q2_0_g64/model.gguf) carries the label.
+        labels = {
+            label for f in files if legacy_q2_claims(label := _extract_quant_label(f), wanted)
+        }
+        if len(labels) == 1:
+            found = _find_local_gguf_by_exact_variant(directory, labels.pop(), model_root)
+    return found
+
+
+# A spelling packed and grouped quants were published under before they had their own labels.
+_LEGACY_Q2_SPELLING_RE = re.compile(r"q[0-9]+_[0-9]+(?:-[0-9]+(?:\.[0-9]+)?bpw)?", re.IGNORECASE)
+_LEGACY_Q2_LABEL_RE = re.compile(
+    r"p?(q[0-9]+_[0-9]+)(?:_g[0-9]+)?(-[0-9]+(?:\.[0-9]+)?bpw)?", re.IGNORECASE
+)
+
+
+def legacy_q2_spelling(label: Optional[str]) -> Optional[str]:
+    """The spelling a packed (PQ2_0) or grouped (Q2_0_g64) label was published under, bpw
+    suffix kept (PQ2_0-2.5bpw was Q2_0-2.5bpw); None for any other label."""
+    match = _LEGACY_Q2_LABEL_RE.fullmatch((label or "").strip())
+    if not match:
+        return None
+    legacy = match.group(1) + (match.group(2) or "")
+    return None if legacy.lower() == (label or "").strip().lower() else legacy
+
+
+def legacy_q2_claims(label: Optional[str], wanted: str) -> bool:
+    """Whether *label* is a packed or grouped quant once published as *wanted*."""
+    legacy = legacy_q2_spelling(label)
+    return legacy is not None and legacy.lower() == wanted.strip().lower()
+
+
+def _find_local_gguf_by_exact_variant(
+    directory: str,
+    variant: str,
+    model_root: Optional[str] = None,
+) -> Optional[str]:
     p = _resolve_gguf_dir(Path(directory))
     if p is None:
         return _direct_gguf_for_variant(directory, variant, model_root)

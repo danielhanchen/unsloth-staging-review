@@ -3100,7 +3100,7 @@ _GGUF_KNOWN_QUANT_RE = re.compile(
     r"|IQ[0-9]+_[A-Z]+(?:_[A-Z0-9]+)?"
     r"|TQ[0-9]+_[0-9]+"
     r"|Q[0-9]+_K_[A-Z]+"
-    r"|Q[0-9]+_[0-9]+"
+    r"|P?Q[0-9]+_[0-9]+(?:_G[0-9]+)?"
     r"|Q[0-9]+_K"
     r"|BF16|F16|F32)",
     re.IGNORECASE,
@@ -3891,6 +3891,24 @@ def _gguf_files_for_variant(files: Iterable[str], variant: str) -> list[str]:
             exact = sorted(f for f in main_files if _extract_quant_label(f).lower() == variant_key)
             if exact:
                 return exact
+        except Exception as e:
+            logger.warning("Failed to extract GGUF quant labels: %s", e)
+        # Packed (PQ2_0) and grouped (Q2_0_g64) quants used to be labelled by their inner Q2_0
+        # token, so a selection saved before that still names Q2_0. Honour it only while no file
+        # carries Q2_0 itself and exactly one packed or grouped label claims it; two claimants
+        # name neither, and the loose match below must not pick one of them either.
+        try:
+            from utils.models.model_config import legacy_q2_claims
+
+            claimants: dict[str, list[str]] = {}
+            for f in main_files:
+                label = _extract_quant_label(f)
+                if legacy_q2_claims(label, variant_key):
+                    claimants.setdefault(label.lower(), []).append(f)
+            if len(claimants) == 1:
+                return sorted(next(iter(claimants.values())))
+            if len(claimants) > 1:
+                return []
         except Exception as e:
             logger.warning("Failed to extract GGUF quant labels: %s", e)
 
