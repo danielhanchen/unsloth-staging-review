@@ -2788,6 +2788,8 @@ export const es = {
       usageTools: "Herramientas",
       exampleCurlTools: "curl + herramientas",
       examplePythonTools: "Python + herramientas",
+      exampleCurlTraining: "curl + entrenamiento",
+      examplePythonTraining: "Python + entrenamiento",
       exampleJavaScriptTools: "JavaScript + herramientas",
       exampleCurlAdvanced: "curl + avanzado",
       examplePythonAdvanced: "Python + avanzado",

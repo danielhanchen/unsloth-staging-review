@@ -2768,6 +2768,8 @@ export const ptBR = {
       usageTools: "Ferramentas",
       exampleCurlTools: "curl + ferramentas",
       examplePythonTools: "Python + ferramentas",
+      exampleCurlTraining: "curl + treinamento",
+      examplePythonTraining: "Python + treinamento",
       exampleJavaScriptTools: "JavaScript + ferramentas",
       exampleCurlAdvanced: "curl + avançado",
       examplePythonAdvanced: "Python + avançado",
