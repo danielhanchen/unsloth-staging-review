@@ -79,6 +79,11 @@ FAKE_SERVER = textwrap.dedent(
                 if fields.get("language") == "slow":
                     time.sleep(30)
                 return self.reply(200, json.dumps({"text": json.dumps(fields, sort_keys=True)}).encode())
+            if self.path == "/v1/audio/transcriptions/details":
+                req = json.loads(body)
+                if req.get("language") == "slow":
+                    time.sleep(30)
+                return self.reply(200, json.dumps({"text": json.dumps(req, sort_keys=True)}).encode())
             self.reply(404, b"{}")
 
     ThreadingHTTPServer(("127.0.0.1", cfg["port"]), H).serve_forever()
@@ -160,20 +165,6 @@ def test_cancel_closes_the_socket_mid_request(fake_binary, tmp_path):
         server.stop()
 
 
-def test_transcription_multipart_carries_model_language_and_file(fake_binary, tmp_path):
-    from core.inference.stt_audiocpp_sidecar import AudioCppSttSidecar
-
-    model = CANARY
-    server = srv.AudioCppServer.start(model, str(tmp_path / "m.gguf"))
-    try:
-        side = AudioCppSttSidecar()
-        side._server = server
-        fields = json.loads(side._post_transcription(b"RIFF....WAVE", "en", None))
-        assert fields == {"file": "dictation.wav", "language": "en", "model": server.model_id}
-    finally:
-        server.stop()
-
-
 def test_cancelled_transcription_stops_the_busy_server(fake_binary, tmp_path):
     from core.inference.stt_audiocpp_sidecar import (
         AudioCppSttSidecar,
@@ -186,7 +177,7 @@ def test_cancelled_transcription_stops_the_busy_server(fake_binary, tmp_path):
         cancel = threading.Event()
         threading.Timer(0.3, cancel.set).start()
         with side._lock, pytest.raises(SttTranscriptionCancelledError):
-            side._post_transcription(b"RIFF....WAVE", "slow", cancel)
+            side._post_details(tmp_path / "a.wav", "slow", cancel, {})
         # The child still decoding the abandoned clip is gone, so the next load starts a fresh one.
         assert side._server is None and not server.alive()
     finally:
