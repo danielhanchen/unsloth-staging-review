@@ -8,21 +8,34 @@ export const AUDIO_CPP_REPO = "audio-cpp/audio.cpp-gguf";
 
 export const AUDIO_CPP_TTS_AUDIO_TYPE = "audiocpp_tts";
 export const AUDIO_CPP_MUSIC_AUDIO_TYPE = "audiocpp_music";
+/** Source separation (HTDemucs, RoFormers). Mirrors AUDIO_CPP_SEP_AUDIO_TYPE in audio_cpp_models.py. */
+export const AUDIO_CPP_SEP_AUDIO_TYPE = "audiocpp_sep";
 export const AUDIO_CPP_AUDIO_TYPES: ReadonlySet<string> = new Set([
   AUDIO_CPP_TTS_AUDIO_TYPE,
   AUDIO_CPP_MUSIC_AUDIO_TYPE,
+  AUDIO_CPP_SEP_AUDIO_TYPE,
 ]);
 
-export type AudioCppTask = "tts" | "music" | "asr";
+export type AudioCppTask = "tts" | "music" | "asr" | "sep";
+
+/** Mirrors AudioWorkflowId; spelled out to keep this file import-free. */
+export type AudioCppWorkflow =
+  | "speak"
+  | "clone"
+  | "music"
+  | "separate"
+  | "transcribe";
 
 export interface AudioCppModel {
   /** Hub repo id, or `${AUDIO_CPP_REPO}/<folder>` for a package in the shared repo. */
   id: string;
   task: AudioCppTask;
+  workflows?: readonly AudioCppWorkflow[];
   /** ASR only: the primary language codes the model transcribes. Absent = multilingual. */
   languages?: readonly string[];
   /** Phonemizes with eSpeak-ng, which upstream runtime bundles lack (backend needs_espeak). */
   needsEspeak?: boolean;
+  stems?: readonly string[];
 }
 
 /** The `audio_cpp_runtime` block of /api/inference/audio/stt/status. */
@@ -47,13 +60,41 @@ export const AUDIO_CPP_MODELS: readonly AudioCppModel[] = [
   { id: folder("MOSS-TTS-Nano-100M-GGUF"), task: "tts" },
   { id: folder("Supertonic-3-GGUF"), task: "tts" },
   { id: folder("Chatterbox-Turbo-GGUF"), task: "tts" },
-  { id: folder("VoxCPM2-GGUF"), task: "tts" },
+  { id: folder("VoxCPM2-GGUF"), task: "tts", workflows: ["speak", "clone"] },
+  { id: folder("Qwen3-TTS-12Hz-0.6B-Base-GGUF"), task: "tts", workflows: ["clone"] },
+  { id: folder("Chatterbox-GGUF"), task: "tts", workflows: ["clone"] },
+  { id: folder("IndexTTS2-GGUF"), task: "tts", workflows: ["clone"] },
+  { id: folder("CosyVoice3-GGUF"), task: "tts", workflows: ["clone"] },
   { id: folder("Qwen3-TTS-12Hz-1.7B-CustomVoice-GGUF"), task: "tts" },
   { id: folder("Qwen3-TTS-12Hz-1.7B-VoiceDesign-GGUF"), task: "tts" },
   { id: "audio-cpp/MiniMax-Music3-GGUF", task: "music" },
   { id: "audio-cpp/Yue2-3B-GGUF", task: "music" },
   { id: folder("ACE-Step1.5-GGUF"), task: "music" },
   { id: folder("Stable-Audio-3-Small-Music-GGUF"), task: "music" },
+  {
+    id: folder("HTDemucs-GGUF"),
+    task: "sep",
+    workflows: ["separate"],
+    stems: ["vocals", "drums", "bass", "other"],
+  },
+  {
+    id: folder("BS-RoFormer-ep368-GGUF"),
+    task: "sep",
+    workflows: ["separate"],
+    stems: ["vocals", "instrumental"],
+  },
+  {
+    id: folder("HTDemucs-6stems-GGUF"),
+    task: "sep",
+    workflows: ["separate"],
+    stems: ["vocals", "drums", "bass", "guitar", "piano", "other"],
+  },
+  {
+    id: folder("Mel-Band-RoFormer-GGUF"),
+    task: "sep",
+    workflows: ["separate"],
+    stems: ["vocals", "instrumental"],
+  },
   { id: folder("Qwen3-ASR-0.6B-GGUF"), task: "asr" },
   { id: folder("Qwen3-ASR-1.7B-GGUF"), task: "asr" },
   { id: folder("Parakeet-TDT-0.6B-v3-GGUF"), task: "asr" },
@@ -61,6 +102,15 @@ export const AUDIO_CPP_MODELS: readonly AudioCppModel[] = [
   { id: folder("Moonshine-Streaming-GGUF"), task: "asr", languages: ENGLISH },
   { id: folder("Nemotron-3.5-ASR-Streaming-0.6B-GGUF"), task: "asr", languages: ENGLISH },
 ];
+
+// Families the backend marks speaks=False (audio_cpp_models.FAMILIES), by repo name: Hub rows
+// carry no backend workflows before download. Chatterbox-Turbo is its own family and speaks.
+const CLONE_ONLY_FAMILY_HINT =
+  /miotts|vevo-?2|fireredtts-?3|firered-?audio|indextts-?2|cosyvoice-?3|confucius-?4|echo-?tts|f5-?tts|chatterbox(?!-?turbo)|qwen3-?tts[^/]*-base/i;
+
+export function isCloneOnlyFamilyId(id: string | null | undefined): boolean {
+  return CLONE_ONLY_FAMILY_HINT.test(id ?? "");
+}
 
 /** Legacy Settings > Voice keys; the backend still maps each to its folder id (and variant). */
 export interface AudioCppDictationModel {
@@ -151,6 +201,24 @@ export function isAudioRuntimeGguf(
     audioCppModelFor(id) !== null ||
     isAudioCppFolderId(id)
   );
+}
+
+const TASK_WORKFLOW: Record<AudioCppTask, AudioCppWorkflow> = {
+  tts: "speak",
+  music: "music",
+  asr: "transcribe",
+  sep: "separate",
+};
+
+export function audioCppWorkflowsFor(
+  model: AudioCppModel,
+): readonly AudioCppWorkflow[] {
+  return model.workflows ?? [TASK_WORKFLOW[model.task]];
+}
+
+export function audioCppModelSpeaks(id: string | null | undefined): boolean {
+  const model = audioCppModelFor(id);
+  return !model || audioCppWorkflowsFor(model).includes("speak");
 }
 
 export function audioCppModelsForTask(task: AudioCppTask): AudioCppModel[] {
