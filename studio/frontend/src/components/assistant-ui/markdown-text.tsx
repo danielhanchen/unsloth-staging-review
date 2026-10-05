@@ -111,6 +111,7 @@ import { unslothDarkTheme, unslothLightTheme } from "./code-themes";
 import { stabilizeStreamingMarkdown } from "./streaming-markdown";
 import {
   IncrementalMarkdownCache,
+  LITERAL_LINK_REMEND,
   hasIncompleteLinkRepair,
   markdownRenderKey,
   parseMarkdownIntoRenderableBlocks,
@@ -1253,7 +1254,8 @@ function MarkdownTextRenderer({
           <Streamdown
             key={`${messageId}:${incrementalCache.renderGeneration}:${renderKey}:${sandboxScopeKey}`}
             mode="streaming"
-            parseIncompleteMarkdown={!incrementalRender && !pendingLinkRepair}
+            parseIncompleteMarkdown={!incrementalRender}
+            remend={pendingLinkRepair ? LITERAL_LINK_REMEND : undefined}
             parseMarkdownIntoBlocksFn={
               incrementalRender?.parseMarkdownIntoBlocks ??
               parseMarkdownIntoRenderableBlocks
