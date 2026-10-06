@@ -3724,7 +3724,7 @@ export const en = {
       videosTitle: "No videos yet",
       videosDescription: "Videos you upload or generate show up here.",
       audioTitle: "No audio yet",
-      audioDescription: "Speech you generate on the Audio page shows up here.",
+      audioDescription: "Speech, music and stems you make on the Audio page show up here.",
       modelsTitle: "No fine-tuned models yet",
       modelsDescription: "Models you train or export in Unsloth show up here.",
       createFolder: "Create folder",
@@ -3780,6 +3780,7 @@ export const en = {
       source: "Source",
       fileType: "File type",
       clearFilters: "Clear filters",
+      workflow: "Made with",
       uploaded: "Uploaded",
       generated: "Generated",
       documents: "Documents",
@@ -3796,6 +3797,14 @@ export const en = {
       sortSize: "Size",
       sortAscending: "Ascending",
       sortDescending: "Descending",
+    },
+    // A clip from the Audio page: its card's player and its preview's run.
+    audio: {
+      play: "Play {name}",
+      pause: "Pause {name}",
+      playFailed: "Could not play {name}",
+      fromRun: "From the same run",
+      downloadRun: "Download all",
     },
     // Entries of the New menu.
     create: {
