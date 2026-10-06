@@ -95,6 +95,7 @@ import { useNavigate, useRouterState } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import {
   EXTERNAL_IMPORT_LABELS,
+  EXTERNAL_IMPORT_SOURCES,
   type ExternalImportSource,
   type ExternalImportStatus,
   importExternalChats,
@@ -343,8 +344,9 @@ export function DataTab({ searchEntry }: { searchEntry?: string }) {
       );
 
   useEffect(() => {
-    void refreshExternalStatus("cursor");
-    void refreshExternalStatus("claude");
+    for (const source of EXTERNAL_IMPORT_SOURCES) {
+      void refreshExternalStatus(source);
+    }
   }, []);
 
   const handleExport = async () => {
@@ -921,7 +923,7 @@ export function DataTab({ searchEntry }: { searchEntry?: string }) {
             }}
           />
         </SettingsRow>
-        {(["cursor", "claude"] as const).map((source) =>
+        {EXTERNAL_IMPORT_SOURCES.map((source) =>
           externalStatus[source] ? (
             <SettingsRow
               key={source}
