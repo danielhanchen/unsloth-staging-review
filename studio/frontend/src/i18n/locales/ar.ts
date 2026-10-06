@@ -2404,6 +2404,7 @@ export const ar = {
       importedSourceOneChat: "تم استيراد محادثة واحدة من {source}.",
       importedSourceChatCount:
         "تم استيراد المحادثات من {source}. العدد: {count}.",
+      sourceUpdated: "تمت إضافة {count} رسالة جديدة من {source}.",
       sourceUpToDate: "محادثات {source} محدَّثة بالفعل.",
       importedSourcePartial: "تعذّر استيراد بعض محادثات {source}.",
       clearHistory: "مسح سجل المحادثات",

@@ -2386,6 +2386,7 @@ export const ja = {
       importedSourceOneChat: "{source} から 1 件の会話をインポートしました。",
       importedSourceChatCount:
         "{source} から {count} 件の会話をインポートしました。",
+      sourceUpdated: "{source} から {count} 件の新しいメッセージを追加しました。",
       sourceUpToDate: "{source} の会話はすでに最新です。",
       importedSourcePartial: "一部の {source} の会話をインポートできませんでした。",
       clearHistory: "チャット履歴を消去",
