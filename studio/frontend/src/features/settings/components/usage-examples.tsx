@@ -491,6 +491,8 @@ while True:
     if status["job_id"] == job_id and status["phase"] in ("completed", "error", "stopped"):
         break
     time.sleep(10)
+if status["phase"] == "error":
+    raise SystemExit(status["error"] or status["message"])
 
 # Stop early and save a checkpoint:
 # requests.post(f"{BASE}/api/train/stop", headers=HEADERS,
@@ -511,7 +513,10 @@ r.raise_for_status()
 
 while (s := requests.get(f"{BASE}/api/train/diffusion/status", headers=HEADERS).json())["active"]:
     print(s["step"], "/", s["total_steps"], s["loss"])
-    time.sleep(10)`;
+    time.sleep(10)
+print(s["status"], s["message"])
+if s["status"] == "error":
+    raise SystemExit(s["message"])`;
 }
 
 function buildTrainingSnippets(
