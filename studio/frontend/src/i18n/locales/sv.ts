@@ -2959,6 +2959,8 @@ export const sv = {
       usageTools: "Verktyg",
       exampleCurlTools: "curl + verktyg",
       examplePythonTools: "Python + verktyg",
+      exampleCurlTraining: "curl + träning",
+      examplePythonTraining: "Python + träning",
       exampleJavaScriptTools: "JavaScript + verktyg",
       exampleCurlAdvanced: "curl + avancerat",
       examplePythonAdvanced: "Python + avancerat",
