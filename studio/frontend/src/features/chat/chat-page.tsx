@@ -2807,6 +2807,24 @@ export function ChatPage({
   const modelLoading = useChatRuntimeStore((state) => state.modelLoading);
   const clearCheckpoint = useChatRuntimeStore((state) => state.clearCheckpoint);
   const activeThreadId = useChatRuntimeStore((state) => state.activeThreadId);
+  const [compactionSnapshot, setCompactionSnapshot] = useState<{
+    threadId: string;
+    count: number;
+  } | null>(null);
+  const handleCompactionCountChange = useCallback(
+    (threadId: string, count: number) => {
+      setCompactionSnapshot((current) =>
+        current?.threadId === threadId && current.count === count
+          ? current
+          : { threadId, count },
+      );
+    },
+    [],
+  );
+  const compactionCount =
+    compactionSnapshot?.threadId === activeThreadId
+      ? compactionSnapshot.count
+      : 0;
   const latestResearchRunId = useResearchRunStore((state) =>
     activeThreadId ? state.latestRunByThreadId[activeThreadId] : undefined,
   );
@@ -4786,6 +4804,7 @@ export function ChatPage({
                     ? contextUsage.contextTokens - contextUsage.promptTokens
                     : contextUsage?.completionTokens
                 }
+                compactionCount={compactionCount}
                 isMlx={isServedByMlx(
                   Boolean(loadedIsGguf),
                   platformDeviceType,
@@ -4916,6 +4935,11 @@ export function ChatPage({
                 onInitialHistoryReady={
                   baseView.mode === "project"
                     ? markProjectRuntimeReady
+                    : undefined
+                }
+                onCompactionCountChange={
+                  baseView.mode === "single"
+                    ? handleCompactionCountChange
                     : undefined
                 }
               >
