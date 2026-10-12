@@ -4937,11 +4937,7 @@ export function ChatPage({
                     ? markProjectRuntimeReady
                     : undefined
                 }
-                onCompactionCountChange={
-                  baseView.mode === "single"
-                    ? handleCompactionCountChange
-                    : undefined
-                }
+                onCompactionCountChange={handleCompactionCountChange}
               >
                 {baseView.mode === "project" ? (
                   <ProjectLanding
