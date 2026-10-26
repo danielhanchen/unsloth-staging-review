@@ -4424,6 +4424,7 @@ class _VLMRowPlan:
         "max_tokens",
         "processors",
         "streamed",
+        "speculates",
     )
 
     def __init__(
@@ -4438,6 +4439,7 @@ class _VLMRowPlan:
         max_tokens,
         processors = None,
         streamed = None,
+        speculates = True,
     ):
         self.prompt = prompt
         self.images = images
@@ -4448,6 +4450,7 @@ class _VLMRowPlan:
         self.max_tokens = max_tokens
         self.processors = processors
         self.streamed = streamed
+        self.speculates = speculates
 
 
 class _VisionBatchRow:
@@ -4489,7 +4492,9 @@ class _VisionBatchRow:
 
 def _vision_batch_reports_ids(engine, speculative):
     """Whether vision rows can be decoded from their sampled ids, as the one-at-a-time decode does."""
-    return speculative is None and "token_ids" in _engine_fields(engine, "GenerationEvent")
+    return "token_ids" in _engine_fields(engine, "GenerationEvent") and (
+        speculative is None or "drafts" in _engine_fields(engine, "GenerationRequest")
+    )
 
 
 def _row_prompt_cache_gap():
@@ -4598,6 +4603,7 @@ class _VisionBatchSession:
                     sampling = SamplingParams(**plan.sampling),
                     logits_processors = plan.processors and _failing_alone(row, plan.processors),
                     **resume,
+                    **({} if self._speculative is None or plan.speculates else {"drafts": False}),
                 )
             )
         except BatchRowRefused as refusal:
@@ -7260,6 +7266,8 @@ class MLXInferenceBackend:
             max_tokens = vlm_kwargs["max_tokens"],
             processors = processors,
             streamed = streamed,
+            # As _generate_vlm, which drops the draft for tool turns.
+            speculates = not (tools or tool_protocol_active),
         )
 
     def _generate_vlm(
