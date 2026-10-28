@@ -14746,6 +14746,7 @@ class _MlxLoadEstimate(NamedTuple):
     fitted_ctx: Optional[int]
     offloadable: tuple
     retains_history: bool
+    offloaded: bool = False
 
 
 def _mlx_load_estimate(
@@ -14807,7 +14808,9 @@ def _mlx_load_estimate(
         not (getattr(config, "is_vision", False) or speculates)
         or mlx_vlm_snapshot_store_available()
     )
-    return None, _MlxLoadEstimate(breakdown, fitted_ctx, offloadable, retains_history)
+    return None, _MlxLoadEstimate(
+        breakdown, fitted_ctx, offloadable, retains_history, "offload" in offload
+    )
 
 
 def _mlx_chat_need(
@@ -14823,7 +14826,8 @@ def _mlx_chat_need(
         return None
     try:
         _, estimate = _mlx_load_estimate(request, config, model_identifier)
-        if estimate is None:
+        # Offload workspaces allocate at prefill but are priced as weights, so the growth would miss them.
+        if estimate is None or estimate.offloaded:
             return None
         from core.inference.mlx_inference import mlx_memory_budget
 
@@ -18597,6 +18601,21 @@ async def _load_model_impl(
         if not (request.gguf_variant or is_direct_gguf_request):
             _inherit_resident_load_in_4bit(backend, request, model_identifier)
             await asyncio.to_thread(reap_dead_worker, backend)
+            if (
+                not request.max_seq_length
+                and _same_loaded_identifier(backend.active_model_name, model_identifier)
+                and _mlx_slots_outgrow_price(backend, _n_parallel)
+            ):
+                # A reload for more rows keeps the context the resident was asked for.
+                request.max_seq_length = (
+                    int(
+                        (backend.models.get(backend.active_model_name) or {}).get(
+                            "max_seq_length_requested"
+                        )
+                        or 0
+                    )
+                    or request.max_seq_length
+                )
             if (
                 _same_loaded_identifier(backend.active_model_name, model_identifier)
                 and (backend.models.get(backend.active_model_name) or {}).get("engine", "auto")
