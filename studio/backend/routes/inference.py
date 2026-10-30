@@ -15964,7 +15964,7 @@ async def _preflight_native_audio_placement(
             load_in_4bit = False,
             max_seq_length = request.max_seq_length,
             required_override_gb = required_gb,
-            # One card: past it, fallback_all lets the branch below weigh every card after the handoff.
+            # Past one card, fallback_all lets the branch below weigh every card after the handoff.
             max_gpus = 1,
         )
         post_handoff_free_gb = None
@@ -15983,7 +15983,6 @@ async def _preflight_native_audio_placement(
                 key = lambda item: (-item[1], item[0]),
             )
             if not fitting:
-                # Every card was weighed, so picking another cannot help.
                 refusal = ValueError(
                     "No single GPU has enough free memory for this native audio model. "
                     + (
