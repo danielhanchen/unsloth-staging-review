@@ -48925,6 +48925,7 @@ def _decode_external_images(encoded: list) -> list:
 async def _external_image_generation(
     body: DiffusionGenerateRequest, request: Request
 ) -> DiffusionGenerateResponse:
+    """Generate through an external provider and persist each image's request duration."""
     from core.inference import image_gallery
     from core.inference.llama_keepwarm import (
         untrack_current_media_request,
@@ -49023,6 +49024,7 @@ async def _external_image_generation(
         timeout = 600.0,
     )
     owner = current_account_id()
+    generation_started = time.perf_counter()
     task = asyncio.create_task(
         client.create_images(
             prompt = body.prompt,
@@ -49066,9 +49068,11 @@ async def _external_image_generation(
                 status_code = 502, detail = "The image endpoint did not return a usable image."
             ) from exc
 
+        generation_seconds = time.perf_counter() - generation_started
         created_at = time.time()
 
         def _persist() -> list[dict]:
+            """Save every provider image with the elapsed time shared by the request."""
             return list(
                 image_gallery.save_many(
                     (
@@ -49082,6 +49086,8 @@ async def _external_image_generation(
                             "seed": body.seed or 0,
                             "batch_index": index,
                             "batch_size": body.batch_size,
+                            "generation_seconds": generation_seconds,
+                            "generation_count": len(images),
                             "model": external_model,
                             "model_kind": "connection",
                             "created_at": created_at,
@@ -49183,6 +49189,7 @@ async def _generate_diffusion_image_core(
 async def _generate_diffusion_image_run(
     request: DiffusionGenerateRequest,
 ) -> DiffusionGenerateResponse:
+    """Generate a local image request and save its shared elapsed time with the images."""
     from core.inference import image_gallery
     from core.inference.diffusion_engine_router import get_active_diffusion_engine
     from core.inference.diffusion_hires import record_fields as hires_record_fields
@@ -49221,6 +49228,7 @@ async def _generate_diffusion_image_run(
         else None
     )
     submitted = request
+    generation_started = time.perf_counter()
     # FLUX.3 prompt upsampling runs ahead of the run, so the sidecar can leave the VRAM before the DiT denoises.
     enhancement = await _enhance_generate_prompts(backend, request)
     if enhancement.status != "applied":
@@ -49364,6 +49372,8 @@ async def _generate_diffusion_image_run(
             _diffusion_persist_active -= 1
             raise
 
+    # The request may produce a batch; record its shared wall time rather than inventing per-image timings.
+    generation_seconds = time.perf_counter() - generation_started
     # Persist each image with its full recipe. BOTH engines batch with a distinct seed per image, returned in ``seeds``, so each is individually reproducible.
     created_at = time.time()
     per_image_seeds = result.get("seeds")
@@ -49371,6 +49381,7 @@ async def _generate_diffusion_image_run(
     list_driven = bool(request.prompts or request.seeds)
 
     def _persist() -> list[dict]:
+        """Persist the local batch and its shared request duration in gallery metadata."""
         items = []
         for index, image in enumerate(result["images"]):
             seed = (
@@ -49406,6 +49417,8 @@ async def _generate_diffusion_image_run(
                         "batch_index": index,
                         # The batch shares one seed, so reproducing a batch_index>0 image needs the original batch_size.
                         "batch_size": 1 if list_driven else request.batch_size,
+                        "generation_seconds": generation_seconds,
+                        "generation_count": len(result["images"]),
                         "model": result.get("repo_id"),
                         **({"engine": result["engine"]} if result.get("engine") else {}),
                         # The BUILD the image came off, not just the repo id: a GGUF repo holds many quants, a dense load may be torchao-
@@ -51233,6 +51246,7 @@ async def _generate_openai_images(
     width: int,
     height: int,
 ):
+    """Run an OpenAI-compatible image request and record its elapsed time in the gallery."""
     from core.inference import image_gallery
     from core.inference.diffusion_engine_router import get_active_diffusion_engine
     from core.inference.gpu_arbiter import DIFFUSION
@@ -51246,6 +51260,7 @@ async def _generate_openai_images(
         openai_errors = True,
         hf_token = hf_token,
     )
+    generation_started = time.perf_counter()
 
     # Use the active engine (diffusers OR native sd.cpp), the same accessor /images/generate uses.
     backend = get_active_diffusion_engine()
@@ -51329,6 +51344,8 @@ async def _generate_openai_images(
             logger.error("openai_images.generate_failed: %s", exc)
             raise HTTPException(status_code = 500, detail = _generate_failure_detail(str(exc)))
 
+    # The request duration includes queue time; it belongs to the request, not to each image separately.
+    generation_seconds = time.perf_counter() - generation_started
     # A local-directory load puts the host path in repo_id, and the monitor row is tunnelled.
     _served_repo = str(result.get("repo_id") or "")
     api_monitor.relabel(monitor_id, public_model_id(_served_repo) or _served_repo)
@@ -51345,6 +51362,8 @@ async def _generate_openai_images(
         "guidance": guidance,
         # The batch shares one base seed, so restoring a batch_index>0 sibling needs the original batch_size.
         "batch_size": body.n,
+        "generation_seconds": generation_seconds,
+        "generation_count": len(result["images"]),
         "model": result.get("repo_id"),
         # Same build record as /images/generate, so the gallery entry can name the GGUF quant and precision.
         "model_kind": result.get("model_kind"),
@@ -51364,6 +51383,7 @@ async def _generate_openai_images(
     per_image_seeds = result.get("seeds")
 
     def _persist() -> list[ImageGenerationData]:
+        """Save the API result and return the requested URL or encoded image response."""
         items: list[ImageGenerationData] = []
         saves = []
         for index, image in enumerate(result["images"]):
