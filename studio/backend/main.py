@@ -1933,6 +1933,7 @@ app.add_middleware(
     expose_headers = [
         "X-Unsloth-Conflict-Kind",
         "X-Unsloth-Refusal",
+        "X-Unsloth-Token-Limit",
         "x-typesafe-request-id",
         "X-Unsloth-Monitor-ID",
         "Retry-After",
